@@ -7,10 +7,12 @@ import tensorflow as tf
 from sklearn import metrics
 from datetime import timedelta
 
-from keras.callbacks import EarlyStopping
+from keras.callbacks import EarlyStopping, TensorBoard
 
 from model.text_cnn import TCNNConfig, TextCNN
+from model.mem_net import MemConfig, MemNet
 from helper.data_helper import *
+from helper.data_iterator import *
 
 base_dir = '../reddit/valid_data_path'
 train_dir = os.path.join(base_dir, 'multimodal.train.txt')
@@ -82,7 +84,7 @@ def get_time_dif(start_time):
 #     print("Time usage:", time_dif)
 
 
-class Text(object):
+class TextPipLine(object):
     def __init__(self, model):
         self.model = model
         self.train()
@@ -103,17 +105,16 @@ class Text(object):
         print("Time usage:", time_dif)
 
         print('Training and evaluating...')
-        start_time = time.time()
-        # total_batch = 0              # 总批次
-        # best_acc_val = 0.0           # 最佳验证集准确率
-        # last_improved = 0            # 记录上一次提升批次
-        # require_improvement = 1000   # 如果超过1000轮未提升，提前结束训练
+
         earystop = EarlyStopping(monitor='val_loss', patience=10, verbose=0, mode='auto')
         self.model.fit(x_train, y_train,
                   batch_size=128,
                   epochs=200,
                   validation_data=(x_val, y_val),
                   callbacks=[earystop])
+
+    def test(self):
+        pass
 
     def save(self):
         if os.path.exists('weights') == False:
@@ -135,6 +136,44 @@ class Text(object):
 #     def save(self):
 #         pass
 
+class MultiPipLine(object):
+    def __init__(self, model):
+        self.model = model
+
+
+    def train(self):
+        #load data
+        train_data_iterator = DataIterator(datapath=train_dir, image_feature_path='../reddit/vgg19_feature/train.npy')
+        val_data_iterator = DataIterator(datapath=val_dir, image_feature_path='../reddit/vgg19_feature/val.npy')
+        text_train = train_data_iterator.text
+        image_train = train_data_iterator.image
+        label_train = train_data_iterator.label
+        text_val = val_data_iterator.text
+        image_val = val_data_iterator.image
+        label_val = val_data_iterator.label
+
+        earystop = EarlyStopping(monitor='val_loss', patience=10, verbose=0, mode='auto')
+
+        tensorboard = TensorBoard(log_dir='../logs')
+        self.model.fit(x=[text_train, image_train],
+                       y=label_train,
+                       batch_size=128,
+                       epochs=20,
+                       validation_data=([text_val, image_val], label_val),
+                       callbacks=[earystop, tensorboard])
+
+    def test(self):
+        #load data
+        test_data_iterator = DataIterator(datapath=test_dir, image_feature_path='../reddit/vgg19_feature/test.npy')
+        text_train = test_data_iterator.text
+        image_train = test_data_iterator.image
+        label_train = test_data_iterator.label
+
+
+    def save(self):
+        pass
+
+
 
 
 if __name__ == '__main__':
@@ -142,6 +181,7 @@ if __name__ == '__main__':
     #     raise ValueError("""usage: python run_cnn.py [train / test]""")
 
     #text
+    """
     print('Configuring CNN model...')
     config = TCNNConfig()
     if not os.path.exists(vocab_dir):  # 如果不存在词汇表，重建
@@ -152,9 +192,20 @@ if __name__ == '__main__':
     config.vocab_size = len(words)
     model = TextCNN(config).model
 
-    text_pipe_line = Text(model)
+    text_pipe_line = TextPipLine(model)
+    
+    """
 
     #image
 
 
     #multimodal
+    print('Configuring MeMNet model ...')
+    config = MemConfig()
+    config.embedding_paras = [get_embeddings_index(), read_vocab(vocab_dir)[1]]
+    model = MemNet(config).model
+    multi_pipline = MultiPipLine(model)
+
+    #multi_pipline.train()
+
+

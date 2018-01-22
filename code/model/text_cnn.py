@@ -11,7 +11,7 @@ from keras.preprocessing.text import *
 from keras.utils.np_utils import *
 
 sys.path.append('../')
-from data_helper.data_helper import *
+from helper.data_helper import *
 # import helper.dataHelper
 
 base_dir = '../reddit/text'
@@ -38,7 +38,7 @@ class TCNNConfig(object):
     print_per_batch = 100    # 每多少轮输出一次结果
     save_per_batch = 10      # 每多少轮存入tensorboard
 
-    pretrain = True          #预训练的词向量
+
 
 class TextCNN(object):
     def __init__(self, config):

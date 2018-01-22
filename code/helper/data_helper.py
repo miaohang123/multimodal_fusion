@@ -99,7 +99,7 @@ def to_words(content, words):
     """将id表示的内容转换为文字"""
     return ''.join(words[x] for x in content)
 
-def process_file(filename, word_to_id, cat_to_id, max_length=100):
+def process_file(filename, word_to_id, cat_to_id, max_length=35):
     """将文件转换为id表示"""
     contents, labels = read_file(filename)[:2]
 

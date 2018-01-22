@@ -18,7 +18,7 @@ class DataIterator:
         words, word_to_id = data_helper.read_vocab(vocab_dir)
         self.text, self.label = data_helper.process_file(datapath, word_to_id, cat_to_id)
         self.image_path_list = data_helper.read_file(datapath)[2]
-        #self.image = np.load(image_feature_path)
+        self.image = np.load(image_feature_path)[:, 0, :, :]
 
         # for root, sub_folder, file_list in os.walk(data_dir):
         #     for file_path in file_list:
@@ -29,13 +29,6 @@ class DataIterator:
         #         im = im.swapaxes(0,1)
         #         self.image.append(np.array(im))
         #         self.labels.append(code)
-
-    @property
-    def the_label(self,indexs):
-        labels=[]
-        for i in indexs:
-            labels.append(self.labels[i])
-        return labels
 
 
     # def input_index_generate_batch(self,index=None):
