@@ -29,7 +29,7 @@ class MemConfig(object):
 
     embedding_dim = 200      # 词向量维度
     seq_length = 35        # 序列长度
-    image_extract_mode = 'vgg16'
+    image_extract_mode = 'inceptionv3'
     num_classes = 4        # 类别数
     num_filters = 128        # 卷积核数目
     kernel_size = 3         # 卷积核尺寸
@@ -37,9 +37,9 @@ class MemConfig(object):
 
 
     mem_size = 2048         #memory size
-    n_hop = 1               #hops of deep memory network
+    n_hop = 2               #hops of deep memory network
 
-    hidden_dim = 32        # GRU层神经元数量
+    hidden_dim = 35        # GRU层神经元数量
 
     dropout_keep_prob = 0.5 # dropout
     dropout_embedding_prob = 0.35 #embedding layer之后的drop
@@ -129,7 +129,7 @@ class MemNet(object):
     def _build_vars(self):
         self.C = []
         for hopn in range(self.config.n_hop):
-            self.C.append(Dense(units=self.config.seq_length, activity_regularizer=l2(l=0.01), name= 'hop_' + str(hopn) + '_shared_linear_layer'))
+            self.C.append(Dense(units=self.config.seq_length, activity_regularizer=l2(l=0.01), name= 'hop_' + str(hopn+1) + '_shared_linear_layer'))
 
 
 
@@ -151,25 +151,25 @@ class MemNet(object):
                 memory_encoder = self._image_encoding(image_input_feature, self.C[hnop - 1])
 
             #get inner product of text embedding and image feature embedding
-            sequence_encoder_temp = Permute((2, 1), name='sequence_encoder_temp')(Lambda(self._expand_dim)(sequence_encoder[-1]))#(self.expand_dim_layer(sequence_encoder[-1]))#tf.transpose(tf.expand_dims(sequence_encoder[-1], -1), [0, 2, 1])
+            sequence_encoder_temp = Permute((2, 1), name='hop-'+str(hnop)+'-sequence_encoder_temp')(Lambda(self._expand_dim)(sequence_encoder[-1]))#(self.expand_dim_layer(sequence_encoder[-1]))#tf.transpose(tf.expand_dims(sequence_encoder[-1], -1), [0, 2, 1])
             # output: (batch_size, 1, seq_length)
 
 
-            dotted = Lambda(self._reduce_sum, name='dotted')(memory_encoder * sequence_encoder_temp)#self.reduce_sum_layer(memory_encoder * sequence_encoder_temp)#tf.reduce_sum(memory_encoder  * sequence_encoder_temp, 2)
+            dotted = Lambda(self._reduce_sum, name='hop-'+str(hnop)+'-dotted')(memory_encoder * sequence_encoder_temp)#self.reduce_sum_layer(memory_encoder * sequence_encoder_temp)#tf.reduce_sum(memory_encoder  * sequence_encoder_temp, 2)
             # outputs: (batch_size, mem_size)
-            self.dotted = Lambda(lambda x: x[:, 0, :])(dot([sequence_encoder_temp, memory_encoder], axes=(2, 2), name='match'))
+            self.dotted = Lambda(lambda x: x[:, 0, :])(dot([sequence_encoder_temp, memory_encoder], axes=(2, 2), name='hop-'+str(hnop)+'-match'))
             #softmax weights
             probs = Activation(activation='softmax')(self.dotted)#tf.nn.softmax(dotted)
             # outputs: (batch_size, mem_size)
-            probs_temp = Permute((2, 1), name='probs_temp')(Lambda(self._expand_dim)(probs))#(self.expand_dim_layer(probs))#tf.transpose(tf.expand_dims(probs, -1), [0, 2, 1])
+            probs_temp = Permute((2, 1), name='hop-'+str(hnop)+'-probs_temp')(Lambda(self._expand_dim)(probs))#(self.expand_dim_layer(probs))#tf.transpose(tf.expand_dims(probs, -1), [0, 2, 1])
             # outputs: (batch_size, 1, mem_size)
 
             memory_output_encoder = self._image_encoding(image_input_feature, self.C[hnop])
 
-            memory_output_encoder_temp = Permute((2, 1), name='memory_output_encoder_temp')(memory_output_encoder)
+            memory_output_encoder_temp = Permute((2, 1), name='hop-'+str(hnop)+'-memory_output_encoder_temp')(memory_output_encoder)
 
 
-            o_k = Lambda(self._reduce_sum, name='o_k')(multiply([memory_output_encoder_temp, probs_temp]))#(memory_output_encoder_temp * probs_temp)#self.reduce_sum_layer(memory_output_encoder_temp * probs_temp)#tf.reduce_sum(memory_output_encoder_temp * probs_temp, 2)
+            o_k = Lambda(self._reduce_sum, name='hop-'+str(hnop)+'-o_k')(multiply([memory_output_encoder_temp, probs_temp]))#(memory_output_encoder_temp * probs_temp)#self.reduce_sum_layer(memory_output_encoder_temp * probs_temp)#tf.reduce_sum(memory_output_encoder_temp * probs_temp, 2)
             o_k = BatchNormalization()(o_k)
 
             u_k = concatenate([o_k, sequence_encoder[-1]])
@@ -217,3 +217,4 @@ if __name__ == '__main__':
     config = MemConfig()
     net = MemNet(config)
     net.train()
+

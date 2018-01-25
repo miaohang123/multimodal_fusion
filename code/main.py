@@ -206,6 +206,6 @@ if __name__ == '__main__':
     model = MemNet(config).model
     multi_pipline = MultiPipLine(model)
 
-    #multi_pipline.train()
+    multi_pipline.train()
 
 
