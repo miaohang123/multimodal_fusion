@@ -14,14 +14,16 @@ from model.mem_net import MemConfig, MemNet
 from helper.data_helper import *
 from helper.data_iterator import *
 
-base_dir = '../reddit/valid_data_path'
+dataset = 'imdb'
+
+base_dir = '../' + dataset +'/valid_data_path'
 train_dir = os.path.join(base_dir, 'multimodal.train.txt')
 test_dir = os.path.join(base_dir, 'multimodal.test.txt')
 val_dir = os.path.join(base_dir, 'multimodal.val.txt')
 vocab_dir = os.path.join(base_dir, 'text.vocab.txt')
 
 save_dir = 'checkpoints/textcnn'
-save_path = os.path.join(save_dir, 'best_validation')   # 最佳验证结果保存路径
+save_path = os.path.join(save_dir, 'best_validation')  # 最佳验证结果保存路径
 
 def get_time_dif(start_time):
     """获取已使用时间"""
@@ -85,10 +87,11 @@ def get_time_dif(start_time):
 
 
 class TextPipLine(object):
-    def __init__(self, model):
+    def __init__(self, model, dataset='reddit'):
         self.model = model
+        self.dataset = dataset
         self.train()
-        self.save()
+        #self.save()
 
     def train(self):
         # print("Configuring TensorBoard and Saver...")
@@ -106,10 +109,11 @@ class TextPipLine(object):
 
         print('Training and evaluating...')
 
-        earystop = EarlyStopping(monitor='val_loss', patience=10, verbose=0, mode='auto')
+        earystop = EarlyStopping(monitor='val_loss', patience=20, verbose=0, mode='auto')
         self.model.fit(x_train, y_train,
                   batch_size=128,
                   epochs=200,
+                  shuffle=True,
                   validation_data=(x_val, y_val),
                   callbacks=[earystop])
 
@@ -137,14 +141,14 @@ class TextPipLine(object):
 #         pass
 
 class MultiPipLine(object):
-    def __init__(self, model):
+    def __init__(self, model, dataset='reddit'):
         self.model = model
-
+        self.dataset = dataset
 
     def train(self):
         #load data
-        train_data_iterator = DataIterator(datapath=train_dir, image_feature_path='../reddit/vgg19_feature/train.npy')
-        val_data_iterator = DataIterator(datapath=val_dir, image_feature_path='../reddit/vgg19_feature/val.npy')
+        train_data_iterator = DataIterator(dataset=self.dataset, datapath=train_dir, image_feature_path='../imdb/vgg16_feature/train.npy')
+        val_data_iterator = DataIterator(dataset=self.dataset, datapath=val_dir, image_feature_path='../imdb/vgg16_feature/val.npy')
         text_train = train_data_iterator.text
         image_train = train_data_iterator.image
         label_train = train_data_iterator.label
@@ -152,23 +156,26 @@ class MultiPipLine(object):
         image_val = val_data_iterator.image
         label_val = val_data_iterator.label
 
-        earystop = EarlyStopping(monitor='val_loss', patience=10, verbose=0, mode='auto')
+        earystop = EarlyStopping(monitor='val_loss', patience=20, verbose=0, mode='auto')
 
         tensorboard = TensorBoard(log_dir='../logs')
         self.model.fit(x=[text_train, image_train],
                        y=label_train,
-                       batch_size=128,
-                       epochs=20,
+                       batch_size=64,
+                       epochs=200,
+                       shuffle=True,
                        validation_data=([text_val, image_val], label_val),
                        callbacks=[earystop, tensorboard])
 
     def test(self):
         #load data
-        test_data_iterator = DataIterator(datapath=test_dir, image_feature_path='../reddit/vgg19_feature/test.npy')
-        text_train = test_data_iterator.text
-        image_train = test_data_iterator.image
-        label_train = test_data_iterator.label
-
+        test_data_iterator = DataIterator(dataset=self.dataset, datapath=test_dir, image_feature_path='../imdb/vgg16_feature/test.npy')
+        text_test = test_data_iterator.text
+        image_test = test_data_iterator.image
+        label_test = test_data_iterator.label
+        self.model.evaluate(x=[text_test, image_test],
+                            y=label_test,
+                            batch_size=64)
 
     def save(self):
         pass
@@ -181,12 +188,14 @@ if __name__ == '__main__':
     #     raise ValueError("""usage: python run_cnn.py [train / test]""")
 
     #text
+
     """
     print('Configuring CNN model...')
     config = TCNNConfig()
     if not os.path.exists(vocab_dir):  # 如果不存在词汇表，重建
         build_vocab(train_dir, vocab_dir, config.vocab_size)
-    categories, cat_to_id = read_category()
+    categories, cat_to_id = read_category(dataset='imdb')
+    print(categories, cat_to_id)
     words, word_to_id = read_vocab(vocab_dir)
     # print(categories)
     config.vocab_size = len(words)
@@ -200,12 +209,14 @@ if __name__ == '__main__':
 
 
     #multimodal
+
     print('Configuring MeMNet model ...')
     config = MemConfig()
     config.embedding_paras = [get_embeddings_index(), read_vocab(vocab_dir)[1]]
     model = MemNet(config).model
-    multi_pipline = MultiPipLine(model)
+    multi_pipline = MultiPipLine(model, 'imdb')
 
     multi_pipline.train()
-
+    multi_pipline.test()
+    
 

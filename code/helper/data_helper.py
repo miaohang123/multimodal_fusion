@@ -88,11 +88,14 @@ def read_vocab(vocab_dir):
 
     return words, word_to_id
 
-def read_category():
+def read_category(dataset='reddit'):
     """读取分类目录，固定"""
-    categories = ['creepy', 'gore', 'happy', 'rage']
-    cat_to_id = dict(zip(categories, range(len(categories))))
+    if dataset == 'reddit':
+        categories = ['creepy', 'gore', 'happy', 'rage']
+    else:
+        categories = ['negative', 'neural', 'positive']
 
+    cat_to_id = dict(zip(categories, range(len(categories))))
     return categories, cat_to_id
 
 def to_words(content, words):
@@ -135,10 +138,11 @@ def batch_iter(x, y, batch_size=64):
 
 
 
-# if __name__ == '__main__':
-#     base_dir = '../data/title'
-#     categories, cat_to_id = read_category()
-#     print(categories, cat_to_id)
+if __name__ == '__main__':
+    #base_dir = '../data/title'
+    categories, cat_to_id = read_category()
+    print(categories, cat_to_id)
+    build_vocab(train_dir='../../imdb/valid_data_path/multimodal.train.txt', vocab_dir='../../imdb/valid_data_path/text.vocab.txt', vocab_size=10000)
 #     #x_val, y_val = process_file(val_dir, word_to_id, cat_to_id, 25)
 #     build_vocab(train_dir='../../reddit/text/text.train.txt', vocab_dir='../../reddit/text/text.vocab.txt', vocab_size=10000)
 #     # process_file('../../reddit/text/text.train.txt')

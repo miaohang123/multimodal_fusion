@@ -5,10 +5,11 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 from keras import backend as K
+from keras import initializers
 from keras.models import Sequential, Model
 from keras.layers.embeddings import Embedding
 from keras.layers import Input, Activation, Dense, Flatten, Reshape, Permute, Dropout, Masking, Add, dot, concatenate, Lambda, Layer, Multiply, multiply, BatchNormalization
-from keras.layers import LSTM, GRU, Conv1D, Conv2D
+from keras.layers import LSTM, GRU, Conv1D, Conv2D, MaxPooling1D, MaxPooling2D
 from keras.layers.wrappers import TimeDistributed, Bidirectional
 from keras.regularizers import l1, l2, l1_l2
 from keras.objectives import categorical_crossentropy
@@ -29,10 +30,12 @@ class MemConfig(object):
 
     embedding_dim = 200      # 词向量维度
     seq_length = 35        # 序列长度
-    image_extract_mode = 'inceptionv3'
-    num_classes = 4        # 类别数
+    image_extract_mode = 'vgg16'
+    num_classes = 3        # 类别数
+
     num_filters = 128        # 卷积核数目
-    kernel_size = 3         # 卷积核尺寸
+    filter_sizes = [3, 4, 5]         # 卷积核尺寸
+    filter_num_total = num_filters * len(filter_sizes)
     vocab_size = 10000       # 词汇表
 
 
@@ -104,12 +107,35 @@ class MemNet(object):
         sequence_input_encoder = Dropout(self.config.dropout_embedding_prob)(sequence_input_encoder)
         # output: (batch_size, seq_length, embedding_dim)
 
-        sequence_input_encoder = GRU(self.config.seq_length)(sequence_input_encoder)
+        #GRU
+        sequence_input_encoder_gru = GRU(self.config.seq_length)(sequence_input_encoder)
+
+        #CNN
+        self.kernels = []
+        output = []
+        for i, filter_size in enumerate(self.config.filter_sizes):
+            conv = Conv1D(self.config.num_filters,
+                       filter_size,
+                       activation='relu',
+                       kernel_initializer=initializers.TruncatedNormal(stddev=0.1),
+                       bias_initializer=initializers.Constant(value=0.1),
+                       name='text-cnn-layer-'+str(i+1))(sequence_input_encoder)
+            pooled = MaxPooling1D(pool_size=2,
+                                strides=2,
+                                padding='valid',
+                                name='text-pool-layer-'+str(i+1))(conv)
+            output.append(pooled)
+
+        pooled_reshape = Flatten()(concatenate(output, axis=1))
+        sequence_input_encoder_cnn = Dropout(self.config.dropout_keep_prob)(pooled_reshape)
+
+
+        #Average
         #sequence_input_encoder = Lambda(self._reduce_mean, name='sequence_embed')(sequence_input_encoder)#self.reduce_sum_layer(sequence_input_encoder) #tf.reduce_sum(sequence_input_encoder, 2)
         # output: (batch_size, seq_length)
         #sequence_input_encoder = BatchNormalization()(sequence_input_encoder)
 
-        return sequence_input_encoder
+        return sequence_input_encoder_gru
 
     def _embedding(self):
         """text embedding, image region feature representation and image feature embeding"""
@@ -119,8 +145,9 @@ class MemNet(object):
         #text(sequence)embedding for input
         sequence_encoder = self._text_encoding(self.sequence_input)
 
-        image_input_feature = Reshape((self.config.image_feature_dim[2], self.config.image_feature_dim[0] * self.config.image_feature_dim[1]))(self.image_input)
+        #image_input_feature = Reshape((self.config.image_feature_dim[2], self.config.image_feature_dim[0] * self.config.image_feature_dim[1]))(self.image_input)
         # output: (batch_size, mem_size(512), 3 * 3)
+        image_input_feature = Reshape((self.config.image_feature_dim[0] * self.config.image_feature_dim[1], self.config.image_feature_dim[2]))(self.image_input)
 
         return sequence_encoder, image_input_feature
 
@@ -137,9 +164,9 @@ class MemNet(object):
         self._build_vars()
         sequence_encoder, image_input_feature = self._embedding()
 
-        # if True:
-        #     o = Dense(10, activation='relu')(sequence_encoder)
-        #     return o
+        if True:
+            o = Dense(10, activation='relu')(sequence_encoder)
+            return o
 
         sequence_encoder = [sequence_encoder]
 
@@ -216,5 +243,5 @@ class MemNet(object):
 if __name__ == '__main__':
     config = MemConfig()
     net = MemNet(config)
-    net.train()
+    #net.train()
 

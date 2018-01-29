@@ -9,13 +9,19 @@ from helper import data_helper
 image_width = 150
 image_height = 150
 
-base_dir = '../reddit/text'
-vocab_dir = os.path.join(base_dir, 'text.vocab.txt')
+#base_dir = '../reddit/text'
+#vocab_dir = os.path.join(base_dir, 'text.vocab.txt')
+
+# if os.path.exists(vocab_dir) == False:
+#     data_helper.build_
 
 class DataIterator:
-    def __init__(self, datapath, image_feature_path):
-        categories, cat_to_id = data_helper.read_category()
+    def __init__(self, dataset, datapath, image_feature_path):
+        base_dir = '../' + dataset + '/valid_data_path'
+        vocab_dir = os.path.join(base_dir, 'text.vocab.txt')
+        categories, cat_to_id = data_helper.read_category(dataset)
         words, word_to_id = data_helper.read_vocab(vocab_dir)
+        
         self.text, self.label = data_helper.process_file(datapath, word_to_id, cat_to_id)
         self.image_path_list = data_helper.read_file(datapath)[2]
         self.image = np.load(image_feature_path)[:, 0, :, :]
