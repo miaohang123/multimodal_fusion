@@ -4,6 +4,7 @@ import ast
 import re
 import time
 import shutil
+import random
 import numpy as np
 import pandas as pd
 from PIL import Image
@@ -48,6 +49,8 @@ def prepare(textpath='../../imdb/imdb_uniq.txt', save_dir='../../imdb/valid_data
     test_file = os.path.join(save_dir, 'multimodal.test.txt')
     val_file = os.path.join(save_dir, 'multimodal.val.txt')
 
+    exist_img = os.listdir('../../imdb/img/')
+
     with open(textpath, 'r') as f:
         for line in f:
             #count_genre = {}.fromkeys([0, 1, 2], 0)
@@ -59,7 +62,7 @@ def prepare(textpath='../../imdb/imdb_uniq.txt', save_dir='../../imdb/valid_data
             genre = movie['Genre']
             rating = movie['imdbRating']
 
-            if plot == 'N/A' or genre == 'N/A':
+            if plot == 'N/A' or genre == 'N/A' or img_path.split('/')[-1] not in exist_img:
                 continue
 
             genre = genre.split(',')
@@ -106,7 +109,21 @@ def write_file(category_list, train_file, test_file, val_file):
                         + category_list[i][4] + '\n')
 
 
+def shuffle_file(data_path):
+    item_list = []
+    with open(data_path, 'r') as f:
+        for line in f:
+            item_list.append(line)
+
+    random.shuffle(item_list)
+    for line in item_list:
+        with open(data_path + '.random', 'a') as f:
+            f.write(line)
+
 
 
 if __name__ == '__main__':
     prepare()
+    for i in os.listdir('../../imdb/valid_data_path'):
+        data_path = os.path.join('../../imdb/valid_data_path', i)
+        shuffle_file(data_path)

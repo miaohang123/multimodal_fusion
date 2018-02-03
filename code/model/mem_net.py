@@ -6,9 +6,10 @@ import pandas as pd
 import tensorflow as tf
 from keras import backend as K
 from keras import initializers
+from keras import optimizers
 from keras.models import Sequential, Model
 from keras.layers.embeddings import Embedding
-from keras.layers import Input, Activation, Dense, Flatten, Reshape, Permute, Dropout, Masking, Add, dot, concatenate, Lambda, Layer, Multiply, multiply, BatchNormalization
+from keras.layers import Input, Activation, Dense, Flatten, Reshape, RepeatVector, Permute, Dropout, Masking, Add, dot, concatenate, Lambda, Layer, Multiply, multiply, BatchNormalization
 from keras.layers import LSTM, GRU, Conv1D, Conv2D, MaxPooling1D, MaxPooling2D
 from keras.layers.wrappers import TimeDistributed, Bidirectional
 from keras.regularizers import l1, l2, l1_l2
@@ -18,10 +19,11 @@ from keras.utils.data_utils import get_file
 from keras.preprocessing.sequence import pad_sequences
 from functools import reduce
 
-from helper import data_helper
+# from helper import data_helper
+import additional_metrics
 
 config = tf.ConfigProto()
-config.gpu_options.per_process_gpu_memory_fraction = 0.4
+config.gpu_options.per_process_gpu_memory_fraction = 0.55
 sess = tf.Session(config=config)
 K.set_session(sess)
 
@@ -29,7 +31,7 @@ class MemConfig(object):
     """memory network配置参数"""
 
     embedding_dim = 200      # 词向量维度
-    seq_length = 35        # 序列长度
+    seq_length = 50        # 序列长度
     image_extract_mode = 'vgg16'
     num_classes = 3        # 类别数
 
@@ -39,17 +41,21 @@ class MemConfig(object):
     vocab_size = 10000       # 词汇表
 
 
-    mem_size = 2048         #memory size
-    n_hop = 2               #hops of deep memory network
+    mem_size = 512         #memory size
+    n_hop = 1               #hops of deep memory network
+    
+    hidden_rnn_dim = 50
+    hidden_dim = 35        # 隐层神经元数量
 
-    hidden_dim = 35        # GRU层神经元数量
-
-    dropout_keep_prob = 0.5 # dropout
+    dropout_keep_prob = 0.5 # dropout of dense layer
     dropout_embedding_prob = 0.35 #embedding layer之后的drop
-    learning_rate = 1e-4   # 学习率
+    rate_drop_gru = 0.15 + np.random.rand() * 0.25
+    rate_drop_dense = 0.15 + np.random.rand() * 0.25
+
+    learning_rate = 1e-2   # 学习率
 
     batch_size = 64         # 每批训练大小
-    num_epochs = 100        # 总迭代轮次
+    num_epochs = 10        # 总迭代轮次
 
     embedding_paras = None          #预训练的词向量
 
@@ -76,7 +82,7 @@ class MemNet(object):
         #     image_input_encoder.append(memory)
         # tf.transpose(tf.convert_to_tensor(image_input_encoder), [1, 0, 2])
         image_input_encoder = TimeDistributed(shared_linear)(image_feature)
-        image_input_encoder = BatchNormalization(axis=1)(image_input_encoder)
+       # image_input_encoder = BatchNormalization(axis=1)(image_input_encoder)
         return image_input_encoder
 
 
@@ -100,7 +106,7 @@ class MemNet(object):
                                            input_length=self.config.seq_length,
                                            weights=[self.embedding_matrix],
                                            #embeddings_initializer='random_uniform',
-                                           embeddings_regularizer=l2(l=0.01),
+                                           embeddings_regularizer=l2(l=0.2),
                                            trainable=True)
 
         sequence_input_encoder = text_embedding_layer_a(sequence_input)
@@ -108,7 +114,14 @@ class MemNet(object):
         # output: (batch_size, seq_length, embedding_dim)
 
         #GRU
-        sequence_input_encoder_gru = GRU(self.config.seq_length)(sequence_input_encoder)
+        sequence_input_encoder_gru = GRU(self.config.hidden_rnn_dim,
+                                         dropout=self.config.rate_dropout_dense,
+                                         recurrent_dropout=self.config.rate_dropout_gru)(sequence_input_encoder)
+
+        #Bi-GRU
+        sequence_input_encoder_bigru = Bidirectional(GRU(self.config.hidden_rnn_dim,
+                                         dropout=self.config.rate_dropout_dense,
+                                         recurrent_dropout=self.config.rate_dropout_gru))(sequence_input_encoder)
 
         #CNN
         self.kernels = []
@@ -120,7 +133,7 @@ class MemNet(object):
                        kernel_initializer=initializers.TruncatedNormal(stddev=0.1),
                        bias_initializer=initializers.Constant(value=0.1),
                        name='text-cnn-layer-'+str(i+1))(sequence_input_encoder)
-            pooled = MaxPooling1D(pool_size=2,
+            pooled = MaxPooling1D(pool_size=self.config.seq_length-filter_size+1,
                                 strides=2,
                                 padding='valid',
                                 name='text-pool-layer-'+str(i+1))(conv)
@@ -156,7 +169,7 @@ class MemNet(object):
     def _build_vars(self):
         self.C = []
         for hopn in range(self.config.n_hop):
-            self.C.append(Dense(units=self.config.seq_length, activity_regularizer=l2(l=0.01), name= 'hop_' + str(hopn+1) + '_shared_linear_layer'))
+            self.C.append(Dense(units=self.config.hidden_rnn_dim, activity_regularizer=l2(l=0.01), activation='relu', name= 'hop_' + str(hopn+1) + '_shared_linear_layer'))
 
 
 
@@ -164,16 +177,16 @@ class MemNet(object):
         self._build_vars()
         sequence_encoder, image_input_feature = self._embedding()
 
-        if True:
-            o = Dense(10, activation='relu')(sequence_encoder)
-            return o
+  #      if True:
+  #          o = Dense(10, activation='relu')(sequence_encoder)
+  #          return o#sequence_encoder
 
         sequence_encoder = [sequence_encoder]
 
 
         for hnop in range(self.config.n_hop):
             if hnop == 1:
-                memory_encoder = self._image_encoding(image_input_feature, Dense(units=self.config.seq_length, activation='relu', activity_regularizer=l2(l=0.01), name='hop0' +  '_shared_linear_layer'))
+                memory_encoder = self._image_encoding(image_input_feature, Dense(units=self.config.hidden_rnn_dim, activation='relu', activity_regularizer=l2(l=0.01), name='hop0' +  '_shared_linear_layer'))
             else:
                 memory_encoder = self._image_encoding(image_input_feature, self.C[hnop - 1])
 
@@ -191,7 +204,7 @@ class MemNet(object):
             probs_temp = Permute((2, 1), name='hop-'+str(hnop)+'-probs_temp')(Lambda(self._expand_dim)(probs))#(self.expand_dim_layer(probs))#tf.transpose(tf.expand_dims(probs, -1), [0, 2, 1])
             # outputs: (batch_size, 1, mem_size)
 
-            memory_output_encoder = self._image_encoding(image_input_feature, self.C[hnop])
+            memory_output_encoder = memory_encoder#self._image_encoding(image_input_feature, self.C[hnop])
 
             memory_output_encoder_temp = Permute((2, 1), name='hop-'+str(hnop)+'-memory_output_encoder_temp')(memory_output_encoder)
 
@@ -201,9 +214,14 @@ class MemNet(object):
 
             u_k = concatenate([o_k, sequence_encoder[-1]])
 
-            #u_k = GRU(self.config.hidden_dim)(u_k)
-            u_k= Dense(self.config.hidden_dim, activation='relu')(u_k)
-            u_k= Dropout(0.5)(u_k)
+            #dense
+            #u_k= Dense(self.config.hidden_rnn_dim, activation='relu')(u_k)
+            #u_k= Dropout(0.5)(u_k)
+
+            #gru
+            u_k = Permute((2, 1))(RepeatVector(1)(u_k))
+            u_k = GRU(self.config.hidden_rnn_dim)(u_k)
+
 
             sequence_encoder.append(u_k)
 
@@ -214,12 +232,13 @@ class MemNet(object):
         self.labels = Input((self.config.num_classes,), name='label')
         self.logits = self._inference()
         self.preds = Dense(self.config.num_classes, activation='softmax')(self.logits)
-        print(self.preds)
         self.model = Model(inputs=[self.sequence_input, self.image_input], outputs=self.preds)
+
+        self.optimizer = optimizers.Adam(self.config.learning_rate)
 
         self.model.compile(loss='categorical_crossentropy',
                       optimizer='adam',
-                      metrics=['acc'])
+                      metrics=['acc'],)# additional_metrics.recall, additional_metrics.f1])
         print(self.model.summary())
         # self.loss = tf.reduce_mean(categorical_crossentropy(self.labels, self.preds))
         # self.train_step = tf.train.AdamOptimizer(self.config.learning_rate).minimize(self.loss)

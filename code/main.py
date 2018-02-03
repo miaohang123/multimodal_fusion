@@ -7,7 +7,9 @@ import tensorflow as tf
 from sklearn import metrics
 from datetime import timedelta
 
+from keras import utils
 from keras.callbacks import EarlyStopping, TensorBoard
+from keras.models import load_model, model_from_json
 
 from model.text_cnn import TCNNConfig, TextCNN
 from model.mem_net import MemConfig, MemNet
@@ -125,20 +127,19 @@ class TextPipLine(object):
             os.mkdir('weights')
         if os.path.exists('model') == False:
             os.mkdir('model')
-        json_string = model.to_json()
+        #json_string = model.to_json()
+        #json.dump(json_string, open('model/textCNN.json', 'w'))  # the json file of the model
+        self.model.save('weights/textCNN_weights.h5')  # the weights file of the model
 
-        json.dump(json_string, open('model/textCNN.json', 'a'))  # the json file of the model
-        self.model.save_weights('weights/textCNN_weights.h5')  # the weights file of the model
+class Image(object):
+    def __init__(self, model):
+        self.model = model
 
-# class Image(object):
-#     def __init__(self, model):
-#         self.model = model
-#
-#     def train(self):
-#         pass
-#
-#     def save(self):
-#         pass
+    def train(self):
+        pass
+
+    def save(self):
+        pass
 
 class MultiPipLine(object):
     def __init__(self, model, dataset='reddit'):
@@ -156,29 +157,50 @@ class MultiPipLine(object):
         image_val = val_data_iterator.image
         label_val = val_data_iterator.label
 
-        earystop = EarlyStopping(monitor='val_loss', patience=20, verbose=0, mode='auto')
+        earystop = EarlyStopping(monitor='val_loss', patience=15, verbose=0, mode='auto')
 
         tensorboard = TensorBoard(log_dir='../logs')
         self.model.fit(x=[text_train, image_train],
                        y=label_train,
                        batch_size=64,
-                       epochs=200,
+                       epochs=100,
                        shuffle=True,
                        validation_data=([text_val, image_val], label_val),
                        callbacks=[earystop, tensorboard])
 
     def test(self):
         #load data
+        #model = model_from_json('model/memmnet.json')
+        #model = self.model#load_model('weights/memmnet_weights.h5')
         test_data_iterator = DataIterator(dataset=self.dataset, datapath=test_dir, image_feature_path='../imdb/vgg16_feature/test.npy')
         text_test = test_data_iterator.text
         image_test = test_data_iterator.image
         label_test = test_data_iterator.label
-        self.model.evaluate(x=[text_test, image_test],
+        print('text_test shape', text_test.shape)
+        print('image_test shape', image_test.shape)
+        print('label_test shape', label_test.shape)
+        print(model.evaluate(x=[text_test, image_test],
                             y=label_test,
-                            batch_size=64)
+                            batch_size=64))
+        #label_test_pred = model.predict_classes(text_test)
+        label_test_pred = model.predict([text_test,image_test])
+        print(label_test_pred[:2])
+        label_test = np.argmax(label_test,1)
+        print(label_test[:2])
+        label_test_pred = np.argmax(label_test_pred,1)
+        print('=====================================')
+        #print(label_test_pred[0
+        print("Precision, Recall and F1-Score...")
+        print(metrics.classification_report(label_test, label_test_pred, target_names=test_data_iterator.categories))
 
     def save(self):
-        pass
+        if os.path.exists('weights') == False:
+            os.mkdir('weights')
+        if os.path.exists('model') == False:
+            os.mkdir('model')
+        #json_string = model.to_json()
+        #json.dump(json_string, open('model/memmnet.json', 'w'))  # the json file of the model
+        self.model.save('weights/memmnet_weights.h5')  # the weights file of the model
 
 
 
@@ -217,6 +239,7 @@ if __name__ == '__main__':
     multi_pipline = MultiPipLine(model, 'imdb')
 
     multi_pipline.train()
+    multi_pipline.save()
     multi_pipline.test()
     
 

@@ -19,10 +19,10 @@ class DataIterator:
     def __init__(self, dataset, datapath, image_feature_path):
         base_dir = '../' + dataset + '/valid_data_path'
         vocab_dir = os.path.join(base_dir, 'text.vocab.txt')
-        categories, cat_to_id = data_helper.read_category(dataset)
-        words, word_to_id = data_helper.read_vocab(vocab_dir)
+        self.categories, self.cat_to_id = data_helper.read_category(dataset)
+        self.words, self.word_to_id = data_helper.read_vocab(vocab_dir)
         
-        self.text, self.label = data_helper.process_file(datapath, word_to_id, cat_to_id)
+        self.text, self.label = data_helper.process_file(datapath, self.word_to_id, self.cat_to_id)
         self.image_path_list = data_helper.read_file(datapath)[2]
         self.image = np.load(image_feature_path)[:, 0, :, :]
 
